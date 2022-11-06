@@ -1,6 +1,7 @@
 package gopubsub_test
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/kauche/gopubsub"
@@ -11,9 +12,18 @@ type greetingMessage struct {
 }
 
 func Example() {
-	// Create a topic with a message type whatever you want to publish and subscribe.
-	topic, stop := gopubsub.NewTopic[greetingMessage]()
-	defer stop() // At the end, call stop() to stop the topic and drain all published messages for the topic.
+	// Create a topic with a type which you want to publish and subscribe.
+	topic := gopubsub.NewTopic[greetingMessage]()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	terminated := make(chan struct{})
+
+	go func() {
+		// Start the topic. This call of Start blocks until the context is canceled.
+		topic.Start(ctx)
+
+		terminated <- struct{}{}
+	}()
 
 	// Publish a message to the topic. This call of Publish is non-blocking.
 	topic.Publish(greetingMessage{greeting: "Hello, gopubsub!"})
@@ -23,4 +33,7 @@ func Example() {
 	topic.Subscribe(func(message greetingMessage) {
 		fmt.Println(message.greeting)
 	})
+
+	cancel()
+	<-terminated
 }

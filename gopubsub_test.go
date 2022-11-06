@@ -1,6 +1,7 @@
 package gopubsub_test
 
 import (
+	"context"
 	"sync"
 	"testing"
 
@@ -22,7 +23,7 @@ func TestMain(m *testing.M) {
 func TestTopic(t *testing.T) {
 	t.Parallel()
 
-	topic, stop := gopubsub.NewTopic[int]()
+	topic := gopubsub.NewTopic[int]()
 
 	type subscriberResult struct {
 		key int
@@ -52,9 +53,18 @@ func TestTopic(t *testing.T) {
 			topic.Publish(i)
 		}(i)
 	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	terminatedCh := make(chan struct{})
+	go func() {
+		topic.Start(ctx)
+		terminatedCh <- struct{}{}
+	}()
 	wg.Wait()
 
-	stop()
+	cancel()
+	<-terminatedCh
 
 	close(subscribersCh)
 

@@ -1,6 +1,7 @@
 package gopubsub
 
 import (
+	"context"
 	"sync"
 )
 
@@ -27,13 +28,19 @@ type Topic[T any] struct {
 	}
 }
 
-// NewTopic creates a new topic. The returned topic is stopped and drains all published messages when the returned stop function is called.
-func NewTopic[T any]() (*Topic[T], StopFunc) {
+// NewTopic creates a new topic.
+func NewTopic[T any]() *Topic[T] {
 	t := &Topic[T]{
 		terminatedCh: make(chan struct{}),
 		publishCh:    make(chan T, defaultPublishChannelBufferSize), // TODO: The buffer size should be configurable.
 	}
 
+	return t
+}
+
+// Start starts the topic and blocks until the context is canceled.
+// When the passed context is canceled, Start waits for all published messages to be processed by all subscribers.
+func (t *Topic[T]) Start(ctx context.Context) {
 	go func() {
 		defer close(t.terminatedCh)
 
@@ -63,7 +70,8 @@ func NewTopic[T any]() (*Topic[T], StopFunc) {
 		}
 	}()
 
-	return t, t.stop
+	<-ctx.Done()
+	t.stop()
 }
 
 // Publish publishes a message to the topic. This method is non-blocking and concurrent-safe.
@@ -116,9 +124,6 @@ func (t *Topic[T]) Subscribe(subscriber func(message T)) {
 		}
 	}()
 }
-
-// StopFunc tells the topic to stop and drain all published messages.
-type StopFunc func()
 
 type subscription[T any] struct {
 	messageCh    chan T
