@@ -11,8 +11,8 @@ const (
 
 // Topic is a publish-subscribe topic.
 type Topic[T any] struct {
-	doneCh    chan struct{}
-	publishCh chan T
+	terminatedCh chan struct{}
+	publishCh    chan T
 
 	publishWg sync.WaitGroup
 
@@ -30,12 +30,12 @@ type Topic[T any] struct {
 // NewTopic creates a new topic. The returned topic is stopped and drains all published messages when the returned stop function is called.
 func NewTopic[T any]() (*Topic[T], StopFunc) {
 	t := &Topic[T]{
-		doneCh:    make(chan struct{}),
-		publishCh: make(chan T, defaultPublishChannelBufferSize), // TODO: The buffer size should be configurable.
+		terminatedCh: make(chan struct{}),
+		publishCh:    make(chan T, defaultPublishChannelBufferSize), // TODO: The buffer size should be configurable.
 	}
 
 	go func() {
-		defer close(t.doneCh)
+		defer close(t.terminatedCh)
 
 		for {
 			message, ok := <-t.publishCh
@@ -88,9 +88,9 @@ func (t *Topic[T]) Subscribe(subscriber func(message T)) {
 	t.stoppedMu.RUnlock()
 
 	s := &subscription[T]{
-		messageCh:  make(chan T, defaultSubscribeChannelBufferSize), // TODO: The buffer size should be configurable.
-		doneCh:     make(chan struct{}),
-		subscriber: subscriber,
+		messageCh:    make(chan T, defaultSubscribeChannelBufferSize), // TODO: The buffer size should be configurable.
+		terminatedCh: make(chan struct{}),
+		subscriber:   subscriber,
 	}
 
 	t.subscriptionsMu.Lock()
@@ -98,7 +98,7 @@ func (t *Topic[T]) Subscribe(subscriber func(message T)) {
 	t.subscriptionsMu.Unlock()
 
 	go func() {
-		defer close(s.doneCh)
+		defer close(s.terminatedCh)
 
 		for {
 			message, ok := <-s.messageCh
@@ -121,10 +121,10 @@ func (t *Topic[T]) Subscribe(subscriber func(message T)) {
 type StopFunc func()
 
 type subscription[T any] struct {
-	messageCh  chan T
-	doneCh     chan struct{}
-	wg         sync.WaitGroup
-	subscriber func(message T)
+	messageCh    chan T
+	terminatedCh chan struct{}
+	wg           sync.WaitGroup
+	subscriber   func(message T)
 }
 
 func (t *Topic[T]) stop() {
@@ -145,11 +145,11 @@ func (t *Topic[T]) stop() {
 		wg.Add(1)
 		go func(s *subscription[T]) {
 			defer wg.Done()
-			<-s.doneCh
+			<-s.terminatedCh
 		}(s)
 	}
 	t.subscriptionsMu.RUnlock()
 
 	wg.Wait()
-	<-t.doneCh
+	<-t.terminatedCh
 }
