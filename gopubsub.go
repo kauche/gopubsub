@@ -2,6 +2,7 @@ package gopubsub
 
 import (
 	"context"
+	"errors"
 	"sync"
 )
 
@@ -10,10 +11,15 @@ const (
 	defaultSubscribeChannelBufferSize = 100
 )
 
+var (
+	ErrAlreadyStarted = errors.New("this topic has been already started")
+	ErrAlreadyClosed  = errors.New("this topic has been already closed")
+)
+
 // Topic is a publish-subscribe topic.
 type Topic[T any] struct {
-	terminatedCh chan struct{}
-	publishCh    chan T
+	publishCh chan T
+	closedCh  chan struct{}
 
 	publishWg sync.WaitGroup
 
@@ -22,17 +28,22 @@ type Topic[T any] struct {
 		subscriptions []*subscription[T]
 	}
 
-	stoppedMu struct {
+	startedMu struct {
 		sync.RWMutex
-		stopped bool
+		started bool
+	}
+
+	closedMu struct {
+		sync.RWMutex
+		closed bool
 	}
 }
 
 // NewTopic creates a new topic.
 func NewTopic[T any]() *Topic[T] {
 	t := &Topic[T]{
-		terminatedCh: make(chan struct{}),
-		publishCh:    make(chan T, defaultPublishChannelBufferSize), // TODO: The buffer size should be configurable.
+		publishCh: make(chan T, defaultPublishChannelBufferSize), // TODO: The buffer size should be configurable.
+		closedCh:  make(chan struct{}),
 	}
 
 	return t
@@ -40,9 +51,17 @@ func NewTopic[T any]() *Topic[T] {
 
 // Start starts the topic and blocks until the context is canceled.
 // When the passed context is canceled, Start waits for all published messages to be processed by all subscribers.
-func (t *Topic[T]) Start(ctx context.Context) {
+// Once Start is called, then Start returns ErrAlreadyStarted.
+func (t *Topic[T]) Start(ctx context.Context) error {
+	t.startedMu.Lock()
+	defer t.startedMu.Unlock()
+	if t.startedMu.started {
+		return ErrAlreadyStarted
+	}
+	t.startedMu.started = true
+
 	go func() {
-		defer close(t.terminatedCh)
+		defer close(t.closedCh)
 
 		for {
 			message, ok := <-t.publishCh
@@ -72,28 +91,34 @@ func (t *Topic[T]) Start(ctx context.Context) {
 
 	<-ctx.Done()
 	t.stop()
+
+	return nil
 }
 
 // Publish publishes a message to the topic. This method is non-blocking and concurrent-safe.
-func (t *Topic[T]) Publish(message T) {
-	t.stoppedMu.RLock()
-	defer t.stoppedMu.RUnlock() // In order to avoid the race condition between Topic.Publish and Topic.stop, defer is necessary.
-	if t.stoppedMu.stopped {
-		return
+// Publish returns ErrAlreadyClosed if the topic has been already closed.
+func (t *Topic[T]) Publish(message T) error {
+	t.closedMu.RLock()
+	defer t.closedMu.RUnlock() // In order to avoid the race condition between Topic.Publish and Topic.stop, defer is necessary.
+	if t.closedMu.closed {
+		return ErrAlreadyClosed
 	}
 
 	t.publishWg.Add(1)
 	t.publishCh <- message
+
+	return nil
 }
 
 // Subscribe registers the passed function as a subscriber to the topic. This method is non-blocking and concurrent-safe.
 // The function passed to Subscribe is called when a message is published to the topic.
-func (t *Topic[T]) Subscribe(subscriber func(message T)) {
-	t.stoppedMu.RLock()
-	if t.stoppedMu.stopped {
-		return
+// Subscribe returns ErrAlreadyClosed if the topic has been already closed.
+func (t *Topic[T]) Subscribe(subscriber func(message T)) error {
+	t.closedMu.RLock()
+	if t.closedMu.closed {
+		return ErrAlreadyClosed
 	}
-	t.stoppedMu.RUnlock()
+	t.closedMu.RUnlock()
 
 	s := &subscription[T]{
 		messageCh:    make(chan T, defaultSubscribeChannelBufferSize), // TODO: The buffer size should be configurable.
@@ -123,6 +148,8 @@ func (t *Topic[T]) Subscribe(subscriber func(message T)) {
 			}()
 		}
 	}()
+
+	return nil
 }
 
 type subscription[T any] struct {
@@ -133,9 +160,9 @@ type subscription[T any] struct {
 }
 
 func (t *Topic[T]) stop() {
-	t.stoppedMu.Lock()
-	t.stoppedMu.stopped = true
-	t.stoppedMu.Unlock()
+	t.closedMu.Lock()
+	t.closedMu.closed = true
+	t.closedMu.Unlock()
 
 	t.publishWg.Wait()
 
@@ -156,5 +183,5 @@ func (t *Topic[T]) stop() {
 	t.subscriptionsMu.RUnlock()
 
 	wg.Wait()
-	<-t.terminatedCh
+	<-t.closedCh
 }

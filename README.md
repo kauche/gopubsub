@@ -7,7 +7,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/kauche/gopubsub"
 )
@@ -25,19 +24,29 @@ func main() {
 
 	go func() {
 		// Start the topic. This call of Start blocks until the context is canceled.
-		topic.Start(ctx)
+		if err := topic.Start(ctx); err != nil {
+			println(err)
+			return
+		}
 
 		terminated <- struct{}{}
 	}()
 
 	// Publish a message to the topic. This call of Publish is non-blocking.
-	topic.Publish(greetingMessage{greeting: "Hello, gopubsub!"})
+	if err := topic.Publish(greetingMessage{greeting: "Hello, gopubsub!"}); err != nil {
+		println(err)
+		return
+	}
 
 	// Subscribe the topic. This call of Subscribe is non-blocking.
 	// The function passed to Subscribe is called when a message is published to the topic.
-	topic.Subscribe(func(message greetingMessage) {
-		fmt.Println(message.greeting)
+	err := topic.Subscribe(func(message greetingMessage) {
+		println(message.greeting)
 	})
+	if err != nil {
+		println(err)
+		return
+	}
 
 	cancel()
 	<-terminated

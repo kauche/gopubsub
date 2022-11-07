@@ -36,12 +36,16 @@ func TestTopic(t *testing.T) {
 	for i := 0; i < numSubscribersPerTopic; i++ {
 		go func(i int) {
 			defer wg.Done()
-			topic.Subscribe(func(message int) {
+			err := topic.Subscribe(func(message int) {
 				subscribersCh <- subscriberResult{
 					key: i,
 					val: message,
 				}
 			})
+			if err != nil {
+				t.Errorf("failed to subscribe the topic: %s", err)
+				return
+			}
 		}(i)
 	}
 	wg.Wait()
@@ -50,7 +54,10 @@ func TestTopic(t *testing.T) {
 	for i := 0; i < numPublishmentsPerTopic; i++ {
 		go func(i int) {
 			defer wg.Done()
-			topic.Publish(i)
+			if err := topic.Publish(i); err != nil {
+				t.Errorf("failed to publish a message to the topic: %s", err)
+				return
+			}
 		}(i)
 	}
 
@@ -58,7 +65,11 @@ func TestTopic(t *testing.T) {
 
 	terminatedCh := make(chan struct{})
 	go func() {
-		topic.Start(ctx)
+		if err := topic.Start(ctx); err != nil {
+			t.Errorf("the topic has aborted: %s", err)
+			return
+		}
+
 		terminatedCh <- struct{}{}
 	}()
 	wg.Wait()
@@ -89,8 +100,40 @@ func TestTopic(t *testing.T) {
 	if diff := cmp.Diff(actual, expected); diff != "" {
 		t.Errorf("\n(-actual, +expected)\n%s", diff)
 	}
+}
 
-	// Ensure that a publishing and a subscribing a stopped topic does not panic.
-	topic.Subscribe(func(message int) {})
-	topic.Publish(1)
+func TestTopicErr(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	topic := gopubsub.NewTopic[struct{}]()
+
+	terminatedCh := make(chan struct{})
+	go func() {
+		if err := topic.Start(ctx); err != nil {
+			t.Errorf("the topic has aborted: %s", err)
+			return
+		}
+
+		terminatedCh <- struct{}{}
+	}()
+
+	cancel()
+	<-terminatedCh
+
+	err := topic.Publish(struct{}{})
+	if err != gopubsub.ErrAlreadyClosed {
+		t.Errorf("unexpected error for the Publish: %s", err)
+	}
+
+	err = topic.Subscribe(func(message struct{}) {})
+	if err != gopubsub.ErrAlreadyClosed {
+		t.Errorf("unexpected error for the Subscribe: %s", err)
+	}
+
+	err = topic.Start(ctx)
+	if err != gopubsub.ErrAlreadyStarted {
+		t.Errorf("unexpected error for the Subscribe: %s", err)
+	}
 }
