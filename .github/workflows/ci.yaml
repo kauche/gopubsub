@@ -15,7 +15,8 @@ jobs:
     strategy:
       matrix:
         version:
-          - 1.19.3
+          - 1.19.4
+          - 1.20rc1
 
     steps:
       - uses: actions/checkout@v3.1.0
