@@ -2,6 +2,7 @@ package gopubsub_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 
@@ -123,17 +124,17 @@ func TestTopicErr(t *testing.T) {
 	<-terminatedCh
 
 	err := topic.Publish(struct{}{})
-	if err != gopubsub.ErrAlreadyClosed {
+	if !errors.Is(err, gopubsub.ErrAlreadyClosed) {
 		t.Errorf("unexpected error for the Publish: %s", err)
 	}
 
 	err = topic.Subscribe(func(message struct{}) {})
-	if err != gopubsub.ErrAlreadyClosed {
+	if !errors.Is(err, gopubsub.ErrAlreadyClosed) {
 		t.Errorf("unexpected error for the Subscribe: %s", err)
 	}
 
 	err = topic.Start(ctx)
-	if err != gopubsub.ErrAlreadyStarted {
+	if !errors.Is(err, gopubsub.ErrAlreadyStarted) {
 		t.Errorf("unexpected error for the Subscribe: %s", err)
 	}
 }

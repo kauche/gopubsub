@@ -29,6 +29,7 @@ func Example() {
 
 	// Publish a message to the topic. This call of Publish is non-blocking.
 	if err := topic.Publish(greetingMessage{greeting: "Hello, gopubsub!"}); err != nil {
+		cancel()
 		println(err)
 		return
 	}
@@ -39,6 +40,7 @@ func Example() {
 		println(message.greeting)
 	})
 	if err != nil {
+		cancel()
 		println(err)
 		return
 	}

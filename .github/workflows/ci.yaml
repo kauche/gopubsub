@@ -21,6 +21,14 @@ jobs:
     steps:
       - uses: actions/checkout@v3.1.0
 
+      - name: Vet
+        run: |
+          docker run \
+            --rm \
+            --volume "$(pwd):/src" \
+            --workdir /src \
+            golang:${{ matrix.version }}-bullseye go vet ./...
+
       - name: Test
         run: |
           docker run \
