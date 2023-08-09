@@ -1,8 +1,8 @@
 module github.com/kauche/gopubsub
 
-go 1.20
+go 1.21
 
 require (
-	github.com/google/go-cmp v0.5.9
-	go.uber.org/goleak v1.2.0
+	github.com/google/go-cmp v0.6.0
+	go.uber.org/goleak v1.3.0
 )
