@@ -10,17 +10,16 @@ jobs:
   test:
     permissions:
       contents: 'read'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     strategy:
       matrix:
         version:
-          - 1.19.12
-          - 1.20.7
-          - 1.21.0
+          - 1.24.9
+          - 1.25.3
 
     steps:
-      - uses: actions/checkout@v3.1.0
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
       - name: Vet
         run: |
@@ -28,7 +27,7 @@ jobs:
             --rm \
             --volume "$(pwd):/src" \
             --workdir /src \
-            golang:${{ matrix.version }}-bookworm go vet ./...
+            golang:${{ matrix.version }}-trixie go vet ./...
 
       - name: Test
         run: |
@@ -36,4 +35,4 @@ jobs:
             --rm \
             --volume "$(pwd):/src" \
             --workdir /src \
-            golang:${{ matrix.version }}-bookworm go test -shuffle on -count=10 -race ./...
+            golang:${{ matrix.version }}-trixie go test -shuffle on -count=10 -race ./...
